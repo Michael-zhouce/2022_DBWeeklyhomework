@@ -1,4 +1,4 @@
-*Sequential Scan：*顺序扫描，通过tableheap的Next方法获取数据，通过select字段来生成tuple  
+*Sequential Scan*：顺序扫描，通过tableheap的Next方法获取数据，通过select字段来生成tuple  
 *Insert：*插入，调用tableheap的InsertTuple进行插入，成功插入数据后也将索引插入  
             在实现insert_executor.cpp时，对InsertExecutor的Next方法在各种情况下的返回值要仔细判断，捋清逻辑，稍不注意就会出现heap-buffer-overflow，也是折腾了很久  
 *Update：*更新，通过给出的GenerateUpdatedTuple生成新的tuple，然后调用tableheap的UpdateTuple进行更新。由于无法原地更新索引，所以对索引采取了先删除再插入新的方法  
