@@ -23,6 +23,9 @@ namespace bustub {
 
 #define BPLUSTREE_TYPE BPlusTree<KeyType, ValueType, KeyComparator>
 
+enum class HowToGetLeaf { SEARCH = 0, LEFT_MOST, RIGHT_MOST };
+enum class Operation { FIND = 0, INSERT, DELETE };
+
 /**
  * Main class providing the API for the Interactive B+ Tree.
  *
@@ -77,7 +80,10 @@ class BPlusTree {
   // read data from file and remove one by one
   void RemoveFromFile(const std::string &file_name, Transaction *transaction = nullptr);
   // expose for test purpose
-  Page *FindLeafPage(const KeyType &key, bool leftMost = false);
+  Page *FindLeafPage(const KeyType &key, bool *root_is_latch = nullptr, HowToGetLeaf mode = HowToGetLeaf::SEARCH);
+
+  Page *FindLeafPageByOperation(const KeyType &key, bool *root_is_latch, HowToGetLeaf mode = HowToGetLeaf::SEARCH,
+                                Operation op = Operation::FIND, Transaction *transaction = nullptr);
 
  private:
   void StartNewTree(const KeyType &key, const ValueType &value);
@@ -85,17 +91,23 @@ class BPlusTree {
   bool InsertIntoLeaf(const KeyType &key, const ValueType &value, Transaction *transaction = nullptr);
 
   void InsertIntoParent(BPlusTreePage *old_node, const KeyType &key, BPlusTreePage *new_node,
-                        Transaction *transaction = nullptr);
+                        Transaction *transaction = nullptr, bool *root_is_latch = nullptr);
+
+  void UnlockPages(Transaction *transaction);
+
+  void UnlockUnpinPages(Transaction *transaction);
+
+  bool IsSafe(BPlusTreePage *node, Operation op);
 
   template <typename N>
   N *Split(N *node);
 
   template <typename N>
-  bool CoalesceOrRedistribute(N *node, Transaction *transaction = nullptr);
+  bool CoalesceOrRedistribute(N *node, Transaction *transaction = nullptr, bool *root_is_latch = nullptr);
 
   template <typename N>
   bool Coalesce(N **neighbor_node, N **node, BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator> **parent,
-                int index, Transaction *transaction = nullptr);
+                int index, Transaction *transaction = nullptr, bool *root_is_latch = nullptr);
 
   template <typename N>
   void Redistribute(N *neighbor_node, N *node, int index);
@@ -116,6 +128,7 @@ class BPlusTree {
   KeyComparator comparator_;
   int leaf_max_size_;
   int internal_max_size_;
+  std::mutex root_latch_;  // to protect root_page_id_
 };
 
 }  // namespace bustub

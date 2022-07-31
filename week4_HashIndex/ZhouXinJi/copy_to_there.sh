@@ -1,0 +1,12 @@
+cp ~/project/database/cmu15445-2020/src/include/storage/page/b_plus_tree_page.h ./
+cp ~/project/database/cmu15445-2020/src/storage/page/b_plus_tree_page.cpp ./
+cp ~/project/database/cmu15445-2020/src/include/storage/page/b_plus_tree_internal_page.h ./
+cp ~/project/database/cmu15445-2020/src/storage/page/b_plus_tree_internal_page.cpp ./
+cp ~/project/database/cmu15445-2020/src/include/storage/page/b_plus_tree_leaf_page.h ./
+cp ~/project/database/cmu15445-2020/src/storage/page/b_plus_tree_leaf_page.cpp ./
+cp ~/project/database/cmu15445-2020/src/include/storage/index/b_plus_tree.h ./
+cp ~/project/database/cmu15445-2020/src/storage/index/b_plus_tree.cpp ./
+cp ~/project/database/cmu15445-2020/src/include/storage/index/b_plus_tree_index.h ./
+cp ~/project/database/cmu15445-2020/src/storage/index/b_plus_tree_index.cpp ./
+cp ~/project/database/cmu15445-2020/src/include/storage/index/index_iterator.h ./
+cp ~/project/database/cmu15445-2020/src/storage/index/index_iterator.cpp ./
