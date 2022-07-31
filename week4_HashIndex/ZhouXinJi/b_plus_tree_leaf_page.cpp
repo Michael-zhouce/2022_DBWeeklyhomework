@@ -54,12 +54,12 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::KeyIndex(const KeyType &key, const KeyComparator
   int low = 0;
   int high = GetSize() - 1;
   int middle;
-  while (low < high) {
+  while (low <= high) {
     middle = low + (high - low) / 2;
-    if (comparator(key, KeyAt(middle)) == -1) {  // "key" is less than the middle
-      high = middle - 1;
-    } else {
+    if (comparator(key, KeyAt(middle)) == 1) {  // "key" is greater than the middle
       low = middle + 1;
+    } else {
+      high = middle - 1;
     }
   }
   return low;
@@ -94,9 +94,20 @@ const MappingType &B_PLUS_TREE_LEAF_PAGE_TYPE::GetItem(int index) {
  */
 INDEX_TEMPLATE_ARGUMENTS
 int B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator) {
-  int insert_index = KeyIndex(key, comparator);
+  // std::cout << "insert key:" << key << "\n";
   int cur_size = GetSize();
+  // 防止直接先插入0
+  if (cur_size == 0) {
+    array[0] = MappingType{key, value};
+    SetSize(1);
+    return 1;
+  }
+  int insert_index = KeyIndex(key, comparator);
   int last_key_index = cur_size - 1;
+  // Key already exists
+  if (comparator(KeyAt(insert_index), key) == 0) {
+    return cur_size;
+  }
   for (int i = last_key_index; i >= insert_index; --i) {
     array[i + 1] = array[i];
   }
@@ -150,7 +161,7 @@ bool B_PLUS_TREE_LEAF_PAGE_TYPE::Lookup(const KeyType &key, ValueType *value, co
   int low = 0;
   int high = GetSize() - 1;
   int midlle;
-  while (low < high) {
+  while (low <= high) {
     midlle = low + (high - low) / 2;
     if (comparator(key, KeyAt(midlle)) == -1) {
       high = midlle - 1;
@@ -182,7 +193,7 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveAndDeleteRecord(const KeyType &key, const 
   int midlle;
   int cur_size = GetSize();
   // binary search to find "key" index
-  while (low < high) {
+  while (low <= high) {
     midlle = low + (high - low) / 2;
     if (comparator(key, KeyAt(midlle)) == -1) {
       high = midlle - 1;
@@ -264,7 +275,7 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveLastToFrontOf(BPlusTreeLeafPage *recipient)
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyFirstFrom(const MappingType &item) {
   int cur_size = GetSize();
-  for (int i = cur_size; i > 0; ++i) {
+  for (int i = cur_size; i > 0; --i) {
     array[i] = array[i - 1];
   }
   array[0] = item;

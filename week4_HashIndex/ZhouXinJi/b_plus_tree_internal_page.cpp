@@ -82,7 +82,7 @@ ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::Lookup(const KeyType &key, const KeyCo
   int high = GetSize() - 1;
   int middle;
   // binaray search
-  while (low < high) {
+  while (low <= high) {
     // middle = (low + high) / 2;   This may cause overflow
     middle = low + (high - low) / 2;
     if (comparator(key, KeyAt(middle)) == -1) {  // key is less than the middle
@@ -142,7 +142,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveHalfTo(BPlusTreeInternalPage *recipient
   int cur_size = GetSize();
   int source_index = cur_size / 2;
   int transfer_num = cur_size - source_index;
-  CopyNFrom(array + source_index, transfer_num, buffer_pool_manager);
+  recipient->CopyNFrom(array + source_index, transfer_num, buffer_pool_manager);
   SetSize(source_index);  // cur_size - transfer_num == source_index
 }
 
@@ -154,6 +154,8 @@ INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::CopyNFrom(MappingType *items, int size, BufferPoolManager *buffer_pool_manager) {
   int i = 0;
   int cur_size = GetSize();
+  // std::cout << "cur_size before:" << GetSize() << "\n";
+  // std::cout << "size?:" << size << "\n";
   while (i < size) {
     array[cur_size++] = items[i];
     page_id_t page_id = items[i].second;
@@ -162,8 +164,10 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::CopyNFrom(MappingType *items, int size, Buf
     child_page->SetParentPageId(GetPageId());
     // buffer_pool_manager->FlushPage(page_id);    unnecessary, unpinpage includes flushing to disk
     buffer_pool_manager->UnpinPage(page_id, true);
+    i++;
   }
-  SetSize(cur_size + size);
+  SetSize(cur_size);
+  // std::cout << "cur_size after:" << GetSize() << "\n";
 }
 
 /*****************************************************************************
