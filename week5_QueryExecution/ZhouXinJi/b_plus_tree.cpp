@@ -284,7 +284,7 @@ void BPLUSTREE_TYPE::InsertIntoParent(BPlusTreePage *old_node, const KeyType &ke
  */
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
-  std::cout << "remove key:" << key << "\n";
+  // std::cout << "remove key:" << key << "\n";
   bool root_is_latch = false;
   Page *leaf_page = FindLeafPageByOperation(key, &root_is_latch, HowToGetLeaf::SEARCH, Operation::DELETE, transaction);
   if (leaf_page == nullptr) {
@@ -308,7 +308,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
     return;
   }
 
-  LOG_DEBUG("leaf node page id:%d", leaf_node->GetPageId());
+  // LOG_DEBUG("leaf node page id:%d", leaf_node->GetPageId());
   CoalesceOrRedistribute(leaf_node, transaction, &root_is_latch);
   if (root_is_latch) {
     root_latch_.unlock();
@@ -320,7 +320,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
   buffer_pool_manager_->UnpinPage(leaf_node->GetPageId(), true);
 
   for (page_id_t page_id : *transaction->GetDeletedPageSet()) {
-    LOG_DEBUG("delete page, page id is:%d", page_id);
+    // LOG_DEBUG("delete page, page id is:%d", page_id);
     buffer_pool_manager_->DeletePage(page_id);
   }
   transaction->GetDeletedPageSet()->clear();
