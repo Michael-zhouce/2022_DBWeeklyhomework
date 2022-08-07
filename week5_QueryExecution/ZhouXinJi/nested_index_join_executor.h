@@ -47,8 +47,16 @@ class NestIndexJoinExecutor : public AbstractExecutor {
 
   bool Next(Tuple *tuple, RID *rid) override;
 
+  Tuple CombineTuples(Tuple *outer_tuple, Tuple *inner_tuple);
+
  private:
   /** The nested index join plan node. */
   const NestedIndexJoinPlanNode *plan_;
+  TableMetadata *inner_table_info_;
+  IndexInfo *inner_index_info_;
+  std::unique_ptr<AbstractExecutor> child_executor_;
+  // outer表的每一条tuple，在inner中都可以通过index一次扫描出与之匹配的tuple的RID，并存放在list中
+  std::vector<RID> inner_matched_tuple_rid_list_;
+  Tuple outer_tuple_;
 };
 }  // namespace bustub

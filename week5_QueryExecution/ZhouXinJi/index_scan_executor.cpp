@@ -35,6 +35,7 @@ Tuple IndexScanExecutor::GenerateTuple(const Tuple &tuple, const Schema &output_
 bool IndexScanExecutor::Next(Tuple *tuple, RID *rid) {
   while (iterator_ != iter_end_) {
     *rid = (*iterator_).second;
+    ++iterator_;
     table_heap_ptr->GetTuple(*rid, tuple, txn_);
     if (plan_->GetPredicate()->Evaluate(tuple, plan_->OutputSchema()).GetAs<bool>()) {
       *tuple = GenerateTuple(*tuple, *(plan_->OutputSchema()));

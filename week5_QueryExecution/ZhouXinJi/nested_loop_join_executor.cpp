@@ -59,7 +59,6 @@ bool NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) {
                                                right_executor_->GetOutputSchema())
                                 .GetAs<bool>()) {
       *tuple = CombineTuples(&left_tuple_, &right_tuple);
-      LOG_DEBUG("pass exam");
       return true;
     }
   }
