@@ -1,0 +1,1 @@
+每个lab都需要在前面lab没有问题的情况下才能继续，之前的executor lab在gradescope上死活过不去，Corner case过不了，耽误了许多时间，导致这周作业时间不足。
