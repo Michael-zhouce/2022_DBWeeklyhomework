@@ -1,7 +1,7 @@
 本周终于看完了CMU的所有视频，做最后一个并发控制的lab。由于涉及到并发，在开始本实验之前，需要对C++中并发相关知识做一些了解。
 
 ![vNguMF.png](https://s1.ax1x.com/2022/08/13/vNguMF.png)
-> 详细的记录见个人博客
+> 详细的记录见[个人博客](http:singhe.arg)
 
 # std::mutex
 
