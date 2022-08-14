@@ -23,7 +23,6 @@
 
 #include "common/rid.h"
 #include "concurrency/transaction.h"
-
 namespace bustub {
 
 class TransactionManager;
@@ -120,6 +119,9 @@ class LockManager {
   /** Removes an edge from t1 -> t2. */
   void RemoveEdge(txn_id_t t1, txn_id_t t2);
 
+  /** Remove Node and all related edges. */
+  void RemoveNode(txn_id_t txn_id);
+
   /**
    * Checks if the graph has a cycle, returning the newest transaction ID in the cycle if so.
    * I use topological sort to check.
@@ -136,6 +138,10 @@ class LockManager {
 
   /** Check whether it is legal to accquire lock  */
   bool CheckBeforeLock(Transaction *txn);
+
+  /** Get lockRequest by transaction  */
+  std::list<LockRequest>::iterator GetIterator(Transaction *txn, const RID &rid);
+
  private:
   std::mutex latch_;
   std::atomic<bool> enable_cycle_detection_;
@@ -145,7 +151,7 @@ class LockManager {
   std::unordered_map<RID, LockRequestQueue> lock_table_;
   /** Waits-for graph representation. */
   std::unordered_map<txn_id_t, std::vector<txn_id_t>> waits_for_;
-  txn_id_t newest_txn_id_ {-1};
+  txn_id_t newest_txn_id_{-1};
 };
 
 }  // namespace bustub
