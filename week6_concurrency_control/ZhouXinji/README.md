@@ -3,19 +3,30 @@
 ![vNguMF.png](https://s1.ax1x.com/2022/08/13/vNguMF.png)
 > 详细的记录见[个人博客](http:singhe.art)
 
-# std::mutex
+# 前置知识
+## std::mutex
 
 互斥量是一个可以处于两态之一的变量:解锁和加锁。这样，只需要一个二进制位表示它，不过实际上，常常使用一个整型量，0表示解锁，而其他所有的值则表示加锁。互斥量使用两个过程。当一个线程(或进程)需要访问临界区时，它调用mutex_lock。如果该互斥量当前是解锁的(即临界区可用)，此调用成功，调用线程可以自由进入该临界区。
 
-# std::lock_guard
+## std::lock_guard
 
-为了防止我们在使用mutex的过程中意外忘记unlock()，引入了\**\*\*std::lock_guard\*\**\*的类模板，有了该类模板，我们就无需自己去控制对互斥量的加锁与解锁
+为了防止我们在使用mutex的过程中意外忘记unlock()，引入了std::lock_guard的类模板，有了该类模板，我们就无需自己去控制对互斥量的加锁与解锁
 
-# std::unique_lock
+## std::unique_lock
 
 这里给出另一种模板类std::unique_lock，该模板类的特点相较于std::lock_guard而言，更加的灵活，弹性更高，同时也更加的消耗资源。
 
-# std::condition_variable
+## std::condition_variable
 
-这个东西主要用来做线程之间的同步。
+这个东西主要用来做线程之间的同步。主要用到的函数有wait和notify_one
 
+# 思考和坑
+- 在对dependency graph检测环的时候，需要对所有的节点都进行一下DFS，而不是只对一个节点进行DFS，因为这个图可能不是连通图。 
+
+- 在进行阻塞通知的时候，应该唤醒阻塞的资源，而不是事务拥有的资源。
+
+  ![](http://img.singhe.art/帧定界.png)
+
+  如图所示，按照1、2、3、4的顺序进行资源的申请会造成死锁，当abort T1的时候，应该通知R0的Request queue，而不是R1的Request queue。
+
+- 尽管当前的事务占有读锁，在进行锁升级的时候也不能保证能够获得写锁。

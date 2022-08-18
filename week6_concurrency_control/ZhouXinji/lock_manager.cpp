@@ -10,27 +10,30 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "concurrency/lock_manager.h"
-#include "concurrency/transaction_manager.h"
-
 #include <queue>
 #include <utility>
 #include <vector>
 
+#include "concurrency/lock_manager.h"
+#include "concurrency/transaction_manager.h"
+
 namespace bustub {
 
 bool LockManager::CheckBeforeLock(Transaction *txn) {
+  bool result = false;
   // In 2PL, it's not allowed to accquire lock on shrinking phase.
   if (txn->GetState() == TransactionState::SHRINKING) {
     txn->SetState(TransactionState::ABORTED);
+    LOG_DEBUG("transaction %d abort beacause of lock_on_shrinking", txn->GetTransactionId());
     throw TransactionAbortException(txn->GetTransactionId(), AbortReason::LOCK_ON_SHRINKING);
-    return false;
+    return result;
   }
 
   if (txn->GetState() == TransactionState::ABORTED) {
-    return false;
+    return result;
   }
-  return true;
+  result = true;
+  return result;
 }
 
 std::list<LockManager::LockRequest>::iterator LockManager::GetIterator(Transaction *txn, const RID &rid) {
@@ -49,16 +52,23 @@ bool LockManager::LockShared(Transaction *txn, const RID &rid) {
   if (!CheckBeforeLock(txn)) {
     return false;
   }
-
-  // It shouldn't accuquire sharedlock for read uncommitted isolation level
   if (txn->GetIsolationLevel() == IsolationLevel::READ_UNCOMMITTED) {
+    txn->SetState(TransactionState::ABORTED);
+    LOG_DEBUG("transaction %d abort because of lockshared_on_read_uncommitted", txn->GetTransactionId());
     throw TransactionAbortException(txn->GetTransactionId(), AbortReason::LOCKSHARED_ON_READ_UNCOMMITTED);
     return false;
   }
 
+  std::unique_lock<std::mutex> lock(latch_);
+  {
+    auto iter = GetIterator(txn, rid);
+    if (iter != lock_table_[rid].request_queue_.end() && iter->lock_mode_ == LockMode::SHARED) {
+      return true;
+    }
+  }
+
   txn->SetState(TransactionState::GROWING);
 
-  std::unique_lock<std::mutex> lock(latch_);
   LockRequestQueue *lock_request_queue = &lock_table_[rid];
   lock_request_queue->request_queue_.emplace_back(LockRequest(txn->GetTransactionId(), LockMode::SHARED));
   if (lock_request_queue->is_writting) {
@@ -71,6 +81,7 @@ bool LockManager::LockShared(Transaction *txn, const RID &rid) {
   if (txn->GetState() == TransactionState::ABORTED) {
     auto iter = GetIterator(txn, rid);
     lock_request_queue->request_queue_.erase(iter);
+    LOG_DEBUG("transaction %d abort because of deadlock", txn->GetTransactionId());
     throw TransactionAbortException(txn->GetTransactionId(), AbortReason::DEADLOCK);
   }
   lock_request_queue->reader_num += 1;
@@ -84,9 +95,15 @@ bool LockManager::LockExclusive(Transaction *txn, const RID &rid) {
   if (!CheckBeforeLock(txn)) {
     return false;
   }
+  std::unique_lock<std::mutex> lock(latch_);
+  {
+    auto iter = GetIterator(txn, rid);
+    if (iter != lock_table_[rid].request_queue_.end() && iter->lock_mode_ == LockMode::EXCLUSIVE) {
+      return true;
+    }
+  }
   txn->SetState(TransactionState::GROWING);
 
-  std::unique_lock<std::mutex> lock(latch_);
   LockRequestQueue *lock_request_queue = &lock_table_[rid];
 
   // If conflicts, blocking
@@ -104,6 +121,7 @@ bool LockManager::LockExclusive(Transaction *txn, const RID &rid) {
   if (txn->GetState() == TransactionState::ABORTED) {
     auto iter = GetIterator(txn, rid);
     lock_request_queue->request_queue_.erase(iter);
+    LOG_DEBUG("transaction %d abort because of deadlock", txn->GetTransactionId());
     throw TransactionAbortException(txn->GetTransactionId(), AbortReason::DEADLOCK);
   }
   lock_request_queue->is_writting = true;
@@ -114,9 +132,28 @@ bool LockManager::LockExclusive(Transaction *txn, const RID &rid) {
 }
 
 bool LockManager::LockUpgrade(Transaction *txn, const RID &rid) {
-  if (!CheckBeforeLock(txn)) {
+  if (!CheckBeforeLock(txn) || !IsLockShared(txn, rid)) {
     return false;
   }
+  std::unique_lock<std::mutex> lock(latch_);
+  LockRequestQueue *lock_request_queue = &lock_table_[rid];
+  auto iter = GetIterator(txn, rid);
+  lock_request_queue->request_queue_.erase(iter);
+  lock_request_queue->request_queue_.emplace_back(txn->GetTransactionId(), LockMode::EXCLUSIVE);
+  lock_request_queue->reader_num -= 1;
+  if (lock_request_queue->reader_num > 0) {
+    lock_request_queue->cv_.wait(lock, [lock_request_queue, txn]() {
+      return (!lock_request_queue->is_writting&& lock_request_queue->reader_num == 0) ||
+             txn->GetState() == TransactionState::ABORTED;
+    });
+  }
+  lock_request_queue->is_writting = true;
+
+  {
+    auto iter = GetIterator(txn, rid);
+    iter->granted_ = true;
+  }
+
   txn->SetState(TransactionState::GROWING);
   txn->GetSharedLockSet()->erase(rid);
   txn->GetExclusiveLockSet()->emplace(rid);
@@ -124,7 +161,7 @@ bool LockManager::LockUpgrade(Transaction *txn, const RID &rid) {
 }
 
 bool LockManager::Unlock(Transaction *txn, const RID &rid) {
-  if (txn->GetState() == TransactionState::GROWING) {
+  if (txn->GetState() == TransactionState::GROWING && txn->GetIsolationLevel() == IsolationLevel::REPEATABLE_READ) {
     txn->SetState(TransactionState::SHRINKING);
   }
 
@@ -133,13 +170,7 @@ bool LockManager::Unlock(Transaction *txn, const RID &rid) {
 
     // Remove lock_request from lock_table
     LockRequestQueue *lock_request_queue = &lock_table_[rid];
-    auto iter = lock_request_queue->request_queue_.begin();
-    while (iter != lock_request_queue->request_queue_.end()) {
-      if (iter->txn_id_ == txn->GetTransactionId()) {
-        break;
-      }
-      iter++;
-    }
+    auto iter = GetIterator(txn, rid);
     if (iter != lock_request_queue->request_queue_.end()) {
       lock_request_queue->request_queue_.erase(iter);
       lock_request_queue->reader_num -= 1;
@@ -207,57 +238,49 @@ void LockManager::RemoveNode(txn_id_t id) {
   }
 }
 
+bool LockManager::DFS(txn_id_t txn_id) {
+  bool has_cycle = false;
+  if (visited[txn_id] == 1) {
+    auto iter = std::find(trace_.begin(), trace_.end(), txn_id);
+    // This node has been searching, which means this grapha has a circle.
+    if (iter != trace_.end()) {
+      has_cycle = true;
+      txn_id_t max_txn_id = -1;
+      LOG_DEBUG("has circle!");
+      while (iter != trace_.end()) {
+        if (*iter > max_txn_id) {
+          max_txn_id = *iter;
+        }
+        std::cout << *iter << " ";
+        iter++;
+      }
+      if (max_txn_id < newest_txn_id_) {
+        newest_txn_id_ = max_txn_id;
+      }
+      std::cout << "\n";
+      return has_cycle;
+    }
+    has_cycle = false;
+    return has_cycle;  // Searched, not searching.
+  }
+  visited[txn_id] = 1;  // visited
+  trace_.emplace_back(txn_id);
+  for (txn_id_t neighbor : waits_for_[txn_id]) {
+    has_cycle |= DFS(neighbor);
+  }
+  trace_.pop_back();
+  return has_cycle;
+}
+
 bool LockManager::HasCycle(txn_id_t *txn_id) {
-  std::unordered_map<txn_id_t, unsigned int> indegree;
-  std::queue<txn_id_t> zero_indegree_queue;
-  int total_node_num = 0;
-
-  // Step 1: compute indegree of graph.
-  for (auto const &item : waits_for_) {
-    for (txn_id_t const &arc_head : item.second) {
-      // Push arc_tail into indegree queue.
-      if (indegree.count(item.first) == 0) {
-        indegree.insert({item.first, 0});
-      }
-
-      // Push arc_head into indegree queue.
-      if (indegree.count(arc_head) == 0) {
-        indegree.insert({arc_head, 1});
-      } else {
-        indegree[arc_head] += 1;
-      }
-    }
+  visited.clear();
+  newest_txn_id_ = 0x0fffffff;
+  bool has_cycle = false;
+  for (auto const &pair : waits_for_) {
+    has_cycle |= DFS(pair.first);
   }
-  total_node_num = indegree.size();
-
-  // Step 2: push nodes whose indegree is zero into queue.
-  int processed_nodes = 0;
-  for (auto const &item : indegree) {
-    if (item.second == 0) {
-      zero_indegree_queue.push(item.first);
-    }
-  }
-
-  while (!zero_indegree_queue.empty()) {
-    processed_nodes += 1;
-    txn_id_t arc_tail = zero_indegree_queue.front();
-    zero_indegree_queue.pop();
-    // Change the in-degree after removing the node.
-    for (txn_id_t const &arc_head : waits_for_[arc_tail]) {
-      indegree[arc_head] -= 1;
-      // If the indegree becomes 0, then we should push it into queue.
-      if (indegree[arc_head] == 0) {
-        zero_indegree_queue.push(arc_head);
-      }
-    }
-  }
-
-  bool result = false;
-  if (processed_nodes != total_node_num) {
-    *txn_id = newest_txn_id_;
-    result = true;
-  }
-  return result;
+  *txn_id = newest_txn_id_;
+  return has_cycle;
 }
 
 std::vector<std::pair<txn_id_t, txn_id_t>> LockManager::GetEdgeList() {
@@ -278,7 +301,7 @@ void LockManager::RunCycleDetection() {
       std::unique_lock<std::mutex> l(latch_);
       std::unordered_map<txn_id_t, std::vector<RID>> to_request_resources;
       // Step1: build the dependency graph
-      waits_for_.clear();
+      // waits_for_.clear();
       for (auto const &item : lock_table_) {
         std::list<LockRequest> granted_request_list;
         std::list<LockRequest> blocking_request_list;
@@ -304,6 +327,7 @@ void LockManager::RunCycleDetection() {
       // Step2: Check if the graph has a circle and break circle if exists.
       txn_id_t txn_id;
       while (HasCycle(&txn_id)) {
+        // LOG_DEBUG("has circle");
         Transaction *txn = TransactionManager::GetTransaction(txn_id);
         txn->SetState(TransactionState::ABORTED);
         RemoveNode(txn_id);
