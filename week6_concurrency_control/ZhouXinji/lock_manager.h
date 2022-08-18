@@ -68,6 +68,20 @@ class LockManager {
     LOG_INFO("Cycle detection thread stopped");
   }
 
+  inline bool IsLockShared(Transaction *txn, const RID &rid) {
+    std::lock_guard<std::mutex> lock(latch_);
+    auto iter = GetIterator(txn, rid);
+    return (iter != lock_table_[rid].request_queue_.end()) && (iter->txn_id_ == txn->GetTransactionId()) &&
+           (iter->lock_mode_ == LockMode::SHARED);
+  }
+
+  inline bool IsLockExclusive(Transaction *txn, const RID &rid) {
+    std::lock_guard<std::mutex> lock(latch_);
+    auto iter = GetIterator(txn, rid);
+    return (iter != lock_table_[rid].request_queue_.end()) && (iter->txn_id_ == txn->GetTransactionId()) &&
+           (iter->lock_mode_ == LockMode::EXCLUSIVE);
+  }
+
   /*
    * [LOCK_NOTE]: For all locking functions, we:
    * 1. return false if the transaction is aborted; and
@@ -143,6 +157,9 @@ class LockManager {
   std::list<LockRequest>::iterator GetIterator(Transaction *txn, const RID &rid);
 
  private:
+  /** Deep first search */
+  bool DFS(txn_id_t txn_id);
+
   std::mutex latch_;
   std::atomic<bool> enable_cycle_detection_;
   std::thread *cycle_detection_thread_;
@@ -151,7 +168,12 @@ class LockManager {
   std::unordered_map<RID, LockRequestQueue> lock_table_;
   /** Waits-for graph representation. */
   std::unordered_map<txn_id_t, std::vector<txn_id_t>> waits_for_;
-  txn_id_t newest_txn_id_{-1};
+  /** Record the trace from source to current node in DFS */
+  std::vector<txn_id_t> trace_;
+  /** The visiting state of nodes. */
+  std::unordered_map<txn_id_t, int> visited;
+  /** This member will be returned in HasCyle. */
+  txn_id_t newest_txn_id_{0x0fffffff};
 };
 
 }  // namespace bustub
