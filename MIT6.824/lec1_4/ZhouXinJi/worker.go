@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/rpc"
@@ -39,21 +40,38 @@ func ihash(key string) int {
 
 // Execute map task
 func ExecMapTask(reply *ResponseArgs, mapf func(string, string) []KeyValue) {
+	// fmt.Println("fiename", reply.Filename)
 	content, err := ioutil.ReadFile(reply.Filename)
 	if err != nil {
 		log.Fatalf("open %v failed", reply.Filename)
 	}
 	kv_array := mapf(reply.Filename, string(content))
-	for _, kv := range kv_array {
-		bucket_id := ihash(kv.Key) % reply.ReduceNumber
-		ofilename := fmt.Sprintf("mr-%d-%d", reply.TaskId, bucket_id)
-		file, err := os.OpenFile(ofilename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	fmt.Println("array len is", len(kv_array))
+
+	encoder_list := make([]*json.Encoder, reply.ReduceNumber)
+	for i := 0; i < reply.ReduceNumber; i++ {
+		ofilename := fmt.Sprintf("mr-tmp-%d-%d", reply.TaskId, i)
+		file, err := os.Create(ofilename)
 		if err != nil {
 			log.Fatalf("open file %v failed", ofilename)
 		}
 		encoder := json.NewEncoder(file)
-		encoder.Encode(kv)
+		encoder_list[i] = encoder
 	}
+
+	for _, kv := range kv_array {
+		bucket_id := ihash(kv.Key) % reply.ReduceNumber
+		encoder := encoder_list[bucket_id]
+		encoder.Encode(&kv)
+	}
+
+	// It's so important!
+	for i := 0; i < reply.ReduceNumber; i++ {
+		origin_name := fmt.Sprintf("mr-tmp-%d-%d", reply.TaskId, i)
+		modified_name := fmt.Sprintf("mr-%d-%d", reply.TaskId, i)
+		os.Rename(origin_name, modified_name)
+	}
+
 }
 
 // Execute reduce task
@@ -61,20 +79,26 @@ func ExecReduceTask(reply *ResponseArgs, reducef func(string, []string) string) 
 	var intermediate []KeyValue
 	for i := 0; i < reply.MapNumber; i++ {
 		ifilename := fmt.Sprintf("mr-%d-%d", i, reply.TaskId)
-		fmt.Println(ifilename)
 		ifile, err := os.Open(ifilename)
 		if err != nil {
 			log.Fatalf("open file %v failed", ifilename)
 		}
 		decoder := json.NewDecoder(ifile)
-		var kv KeyValue
 		for {
-			if err := decoder.Decode(&kv); err != nil {
+			var kv KeyValue
+			err := decoder.Decode(&kv)
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				fmt.Println("other error", err)
+				fmt.Println("filename:", ifilename)
+				fmt.Println("content:", kv)
 				break
 			}
 			intermediate = append(intermediate, kv)
 		}
 	}
+	fmt.Println("intermediate len ", len(intermediate))
 	sort.Sort(ByKey(intermediate))
 	ofilename := fmt.Sprintf("mr-out-%d", reply.TaskId)
 	ofile, _ := os.Create(ofilename)
@@ -101,6 +125,7 @@ func ExecReduceTask(reply *ResponseArgs, reducef func(string, []string) string) 
 		i = j
 	}
 	ofile.Close()
+
 }
 
 // Notify coordinator that worker's state has changed

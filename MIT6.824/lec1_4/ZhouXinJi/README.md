@@ -9,3 +9,6 @@
 - RPC函数必须带有返回值error且必须仅有两个参数，否则再调用RPC的时候就会提示找不到这个函数
 - RPC传递的参数首字母必须大写
 - defer c.mutex.Lock()，应该是Unlock的，可恶啊，debug了一个小时硬是没有发现问题出在哪里，当发现的时候能够气个半死。
+- encoding/json.NewEncoder()传递的参数一定要用os.Create()打开，不要用os.OpenFile打开，要不然不知道为什么会多好多条数据出来。
+- 在map任务结束之前，一定要用tmp file防止reduce任务读取到非完整数据，否则会出大问题。
+- 每次读取json数据的时候都重新定义变量，不要一直用同一个变量。
