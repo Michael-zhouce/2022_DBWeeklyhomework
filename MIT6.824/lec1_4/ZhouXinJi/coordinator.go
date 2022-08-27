@@ -117,7 +117,7 @@ func (c *Coordinator) AssignReduceTask(reply *ResponseArgs) {
 	}
 	reply.MapNumber = c.nMap_
 	reply.ReduceNumber = c.nReduce_
-	fmt.Printf("assign reduce task, task id is %d\n", reply.TaskId)
+	// fmt.Printf("assign reduce task, task id is %d\n", reply.TaskId)
 	go func(taskId int) {
 		time.Sleep(time.Duration(10) * time.Second)
 		c.mutex_.Lock()
@@ -147,10 +147,10 @@ func (c *Coordinator) HandleFinish(args *RequestArgs) {
 		}
 		break
 	case ReduceState:
-		fmt.Println("reduce finish")
 		c.ReduceTaskStatusMap_[args.TaskId] = Done
 		c.nFinishedReduceTask_ += 1
 		if c.nFinishedReduceTask_ == len(c.ReduceTaskStatusMap_) {
+			fmt.Println("all tasks have been finished")
 			c.CurState_ = Finish
 		}
 		break
