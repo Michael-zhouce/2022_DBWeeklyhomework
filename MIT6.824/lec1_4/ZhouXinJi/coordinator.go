@@ -82,12 +82,18 @@ func (c *Coordinator) AssignMapTask(reply *ResponseArgs) {
 	reply.Operation = MapOperation
 	c.mutex_.Lock()
 	defer c.mutex_.Unlock()
+	assigned_task := false
 	for i := 0; i < len(c.MapTaskStatusMap_); i++ {
 		if c.MapTaskStatusMap_[i] == NoStart {
 			c.MapTaskStatusMap_[i] = Running
 			reply.TaskId = i
+			assigned_task = true
 			break
 		}
+	}
+	if !assigned_task && c.nFinishedMapTask_ != c.nMap_ {
+		reply.Operation = WaitOperation
+		return
 	}
 	reply.Filename = c.InputFiles_[reply.TaskId]
 	reply.MapNumber = c.nMap_
@@ -108,12 +114,18 @@ func (c *Coordinator) AssignReduceTask(reply *ResponseArgs) {
 	reply.Operation = ReduceOperation
 	c.mutex_.Lock()
 	defer c.mutex_.Unlock()
+	assigned_task := false
 	for i := 0; i < len(c.ReduceTaskStatusMap_); i++ {
 		if c.ReduceTaskStatusMap_[i] == NoStart {
 			c.ReduceTaskStatusMap_[i] = Running
 			reply.TaskId = i
+			assigned_task = true
 			break
 		}
+	}
+	if !assigned_task && c.nFinishedReduceTask_ != c.nReduce_ {
+		reply.Operation = WaitOperation
+		return
 	}
 	reply.MapNumber = c.nMap_
 	reply.ReduceNumber = c.nReduce_
@@ -139,6 +151,7 @@ func (c *Coordinator) HandleFinish(args *RequestArgs) {
 	defer c.mutex_.Unlock()
 	switch c.CurState_ {
 	case MapState:
+		fmt.Println("map task finished id:", args.TaskId)
 		c.MapTaskStatusMap_[args.TaskId] = Done
 		c.nFinishedMapTask_ += 1
 		if c.nFinishedMapTask_ == len(c.MapTaskStatusMap_) {
