@@ -10,6 +10,7 @@ import (
 	"net/rpc"
 	"os"
 	"sort"
+	"time"
 )
 
 //
@@ -40,7 +41,6 @@ func ihash(key string) int {
 
 // Execute map task
 func ExecMapTask(reply *ResponseArgs, mapf func(string, string) []KeyValue) {
-	// fmt.Println("fiename", reply.Filename)
 	content, err := ioutil.ReadFile(reply.Filename)
 	if err != nil {
 		log.Fatalf("open %v failed", reply.Filename)
@@ -66,6 +66,7 @@ func ExecMapTask(reply *ResponseArgs, mapf func(string, string) []KeyValue) {
 	}
 
 	// It's so important!
+	fmt.Println("reduce number:", reply.ReduceNumber)
 	for i := 0; i < reply.ReduceNumber; i++ {
 		origin_name := fmt.Sprintf("mr-tmp-%d-%d", reply.TaskId, i)
 		modified_name := fmt.Sprintf("mr-%d-%d", reply.TaskId, i)
@@ -80,10 +81,12 @@ func ExecReduceTask(reply *ResponseArgs, reducef func(string, []string) string) 
 	for i := 0; i < reply.MapNumber; i++ {
 		ifilename := fmt.Sprintf("mr-%d-%d", i, reply.TaskId)
 		ifile, err := os.Open(ifilename)
+		defer ifile.Close()
 		if err != nil {
 			log.Fatalf("open file %v failed", ifilename)
 		}
 		decoder := json.NewDecoder(ifile)
+		count := 0
 		for {
 			var kv KeyValue
 			err := decoder.Decode(&kv)
@@ -93,8 +96,10 @@ func ExecReduceTask(reply *ResponseArgs, reducef func(string, []string) string) 
 				fmt.Println("other error", err)
 				fmt.Println("filename:", ifilename)
 				fmt.Println("content:", kv)
+				fmt.Println("count is ", count)
 				break
 			}
+			count += 1
 			intermediate = append(intermediate, kv)
 		}
 	}
@@ -129,8 +134,9 @@ func ExecReduceTask(reply *ResponseArgs, reducef func(string, []string) string) 
 }
 
 // Notify coordinator that worker's state has changed
-func NotifyCoordinator() {
+func NotifyCoordinator(taskId int) {
 	args := RequestArgs{}
+	args.TaskId = taskId
 	args.WorkerState = Finished
 	reply := ResponseArgs{}
 	call("Coordinator.AssignTask", &args, &reply)
@@ -156,11 +162,14 @@ func Worker(mapf func(string, string) []KeyValue,
 		switch reply.Operation {
 		case MapOperation:
 			ExecMapTask(&reply, mapf)
-			NotifyCoordinator()
+			NotifyCoordinator(reply.TaskId)
 			break
 		case ReduceOperation:
 			ExecReduceTask(&reply, reducef)
-			NotifyCoordinator()
+			NotifyCoordinator(reply.TaskId)
+			break
+		case WaitOperation:
+			time.Sleep(time.Second)
 			break
 		case DoneOpetation:
 			return

@@ -22,6 +22,7 @@ type WorkerState int
 const (
 	MapOperation OpType = iota
 	ReduceOperation
+	WaitOperation
 	DoneOpetation
 )
 
